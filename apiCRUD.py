@@ -51,4 +51,27 @@ def createTask(task: dict):
     nextId += 1
     return newTask
 
-    
+@myApp.put("/tasks/{taskId}")
+def updateTask(taskId: int, task: dict):
+    for existingTask in tasks:
+        if existingTask["id"] == taskId:
+            title = task.get("title", "").strip()
+            if not title and "title" in task:
+                raise HTTPException(status_code=400, detail="Title cannot be empty")
+            if not title and "title" not in task and "done" not in task:
+                raise HTTPException(status_code=400, detail="Provide a title and/or done value")
+            if title:
+                existingTask["title"] = title
+            existingTask["done"] = task.get("done", existingTask["done"])
+            return existingTask
+
+    raise HTTPException(status_code=404, detail=f"Task {taskId} not found")
+
+@myApp.delete("/tasks/{taskId}", status_code=204)
+def deleteTask(taskId: int):
+    for i, task in enumerate(tasks):
+        if task["id"] == taskId:
+            tasks.pop(i)
+            return
+        
+    raise HTTPException(status_code=404, detail=f"Task {taskId} not found")
