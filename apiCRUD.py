@@ -1,6 +1,9 @@
 import sqlite3
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException as StarletteHTTPException
+
 
 def init_db():
     """Initialize the SQLite database and create the tasks table if it doesn't exist."""
@@ -27,6 +30,12 @@ def init_db():
         conn.commit()
     conn.close()
 
+def get_db_connection():
+    """Open a new connection to tasks.db with rows returned as dict-like objects."""
+    conn = sqlite3.connect("tasks.db")
+    conn.row_factory = sqlite3.Row
+    return conn
+
 tasks = [
     {"id": 1, "title": "Wash dishes", "done": True},
     {"id": 2, "title": "Clean bedroom", "done": False},
@@ -36,6 +45,11 @@ tasks = [
 nextId = max([t["id"] for t in tasks], default=0) + 1
 
 myApp = FastAPI()
+
+@myApp.exception_handler(StarletteHTTPException)
+def custom_http_exception_handler(request, exc):
+    """Return errors as {error:"message"} instead of FastAPI's default error message format."""
+    return JSONResponse(status_code=exc.status_code,content={"error": exc.detail},)
 
 @myApp.on_event("startup")
 def startup_event():
@@ -60,16 +74,21 @@ def health():
 
 @myApp.get("/tasks")
 def get_tasks():
-    """List all tasks."""
-    return tasks
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 @myApp.get("/tasks/{taskId}")
 def getTask(taskId: int):
     """Get a single task by its id. Returns 404 if not found."""
-    for task in tasks:
-        if task["id"] == taskId:
-            return task
-    raise HTTPException(status_code=404, detail=f"Task {taskId} not found")
+    conn = get_db_connection()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (taskId,)).fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    return dict(row)
 
 @myApp.post("/tasks", status_code=201)
 def createTask(task: dict):
