@@ -1,7 +1,31 @@
+import sqlite3
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+def init_db():
+    """Initialize the SQLite database and create the tasks table if it doesn't exist."""
+    conn = sqlite3.connect("tasks.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done BOOLEAN NOT NULL DEFAULT 0
+        )
+    """)
+    conn.commit()
 
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    count = cursor.fetchone()[0]
+    if count == 0:
+        cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", 
+        [
+            ("Wash dishes", 1),
+            ("Clean bedroom", 0),
+            ("Shower", 0)
+        ])
+        conn.commit()
+    conn.close()
 
 tasks = [
     {"id": 1, "title": "Wash dishes", "done": True},
@@ -12,6 +36,11 @@ tasks = [
 nextId = max([t["id"] for t in tasks], default=0) + 1
 
 myApp = FastAPI()
+
+@myApp.on_event("startup")
+def startup_event():
+    """Run the database initialization on startup."""
+    init_db()
 
 @myApp.get("/")
 def door():
@@ -82,3 +111,4 @@ def deleteTask(taskId: int):
             return
         
     raise HTTPException(status_code=404, detail=f"Task {taskId} not found")
+
